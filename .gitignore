@@ -1,0 +1,13 @@
+.env
+# env / secrets
+.env
+.env.*
+
+# python cache & temp
+__pycache__/
+*.py[cod]
+*.bak
+*.save
+.DS_Store
+ai/list_models.py
+ai/list_models.py
