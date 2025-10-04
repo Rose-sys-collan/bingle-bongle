@@ -516,3 +516,135 @@ def explain_terms(
     except Exception:
         # 任意异常：完全回退
         return [{"term": t, "explanation": _simple_explain(t)} for t in terms]
+
+
+# ========== Elaborate Based on Tone ==========
+
+PROMPT_ELABORATE_TONE = """
+You are EchoClass. Elaborate the idea for ESL students in {audience} with the requested tone.
+Requirements:
+- Tone: {tone}
+- Length: {length_hint}
+- Level: CEFR A2–B1 (plain, concrete English)
+- Be inclusive and non-judgmental.
+- Avoid jargon unless explained.
+Return only the rewritten text (no preface).
+Original:
+{original}
+""".strip()
+
+def elaborate_note(
+    text: str,
+    tone: str = "friendly and encouraging",
+    audience: str = "undergraduate students",
+    length: str = "short",
+    use_model: bool = True,
+    model_name: str | None = None,
+    temperature: float = 0.4,
+) -> str:
+    original = (text or "").strip()
+    if not original:
+        return ""
+    length_map = {
+        "very short": "2–3 sentences",
+        "short": "4–6 sentences",
+        "medium": "1–2 paragraphs",
+        "long": "2–3 paragraphs",
+    }
+    length_hint = length_map.get(length, "4–6 sentences")
+    if not use_model:
+        base = original.rstrip(".")
+        return f"{base}. In simple words, {base.lower()}. This version is {tone} for {audience}."
+    import os
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    model_name = model_name or os.getenv("ECHOCLASS_MODEL", "gemini-1.5-flash")
+    try:
+        import google.generativeai as genai
+        if not api_key:
+            raise RuntimeError("No API key")
+        genai.configure(api_key=api_key)
+        prompt = PROMPT_ELABORATE_TONE.format(
+            audience=audience, tone=tone, length_hint=length_hint, original=original
+        )
+        resp = genai.GenerativeModel(model_name).generate_content(
+            prompt, generation_config={"temperature": float(temperature), "top_p": 0.9, "top_k": 40}
+        )
+        return (getattr(resp, "text", "") or "").strip()
+    except Exception:
+        base = original.rstrip(".")
+        return f"{base}. In simple words, {base.lower()}. This version is {tone} for {audience}."
+
+# ========== Local Source Retrieval (TF-IDF over docs/) ==========
+
+from pathlib import Path
+from typing import List, Dict, Optional
+import re
+
+def _read_text_file(p: Path) -> str:
+    try:
+        return p.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return p.read_text(errors="ignore")
+
+def _read_pdf_file(p: Path) -> str:
+    try:
+        import pypdf
+        reader = pypdf.PdfReader(str(p))
+        return "\n".join(page.extract_text() or "" for page in reader.pages)
+    except Exception:
+        return ""
+
+def _make_title(p: Path) -> str:
+    return p.stem.replace("_"," ").replace("-"," ").title()
+
+def _make_snippet(text: str, query: str, max_len: int = 200) -> str:
+    q = re.escape(query.split()[0]) if query.strip() else ""
+    if q:
+        m = re.search(q, text, flags=re.I)
+        if m:
+            i = max(0, m.start() - 80)
+            return (text[i:i+max_len].replace("\n", " ")).strip()
+    return (text[:max_len].replace("\n", " ")).strip()
+
+def retrieve_sources(
+    query: str,
+    root: str | Path = "docs",
+    patterns: tuple = ("*.md","*.txt","*.pdf"),
+    top_k: int = 3,
+) -> List[Dict]:
+    root = Path(root)
+    files = []
+    for pat in patterns:
+        files.extend(root.rglob(pat))
+    if not files:
+        return []
+    corpus_paths, corpus_texts = [], []
+    for p in files:
+        txt = _read_pdf_file(p) if p.suffix.lower()==".pdf" else _read_text_file(p)
+        txt = (txt or "").strip()
+        if txt:
+            corpus_paths.append(p)
+            corpus_texts.append(txt)
+    if not corpus_texts:
+        return []
+    try:
+        from sklearn.feature_extraction.text import TfidfVectorizer
+        from sklearn.metrics.pairwise import cosine_similarity
+        vect = TfidfVectorizer(max_features=5000, ngram_range=(1,2), stop_words="english")
+        X = vect.fit_transform(corpus_texts)
+        qv = vect.transform([query])
+        sims = cosine_similarity(qv, X).ravel()
+        idxs = sims.argsort()[::-1][:top_k]
+    except Exception:
+        sims = [sum(t.lower().count(w) for w in query.lower().split()) for t in corpus_texts]
+        idxs = sorted(range(len(sims)), key=lambda i: sims[i], reverse=True)[:top_k]
+    out: List[Dict] = []
+    for i in idxs:
+        p, t, s = corpus_paths[i], corpus_texts[i], float(sims[i])
+        out.append({
+            "path": str(p),
+            "title": _make_title(p),
+            "snippet": _make_snippet(t, query),
+            "score": round(s, 4),
+        })
+    return out
