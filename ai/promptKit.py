@@ -186,3 +186,38 @@ def image_to_latex(math_text: str):
         }
     )
     return _json.loads(resp.text)
+
+
+PROMPT_NOTE_REWRITE = """
+You are EchoClass, an AI note rewriter that helps ESL (English-as-a-Second-Language)
+students express their ideas clearly and inclusively.
+
+Task:
+- Rewrite the following classroom note into fluent, simple, and unbiased English.
+- Keep the academic meaning, but make the tone respectful and inclusive.
+- Replace biased words or phrases (e.g., “foreign students”, “poor English”) with neutral alternatives.
+- Output only the rewritten text, without explanation.
+
+Note:
+{note}
+"""
+
+def rewrite_note(text):
+    prompt = PROMPT_NOTE_REWRITE.format(note=text)
+    # 调用模型接口，Gemini
+    model = genai.GenerativeModel("gemini-1.5-pro")
+    response = model.generate_content(prompt)
+    return response.text
+
+
+test_notes = [
+    "Foreign students often struggle to present clearly.",
+    "Some people speak bad English but try their best.",
+    "The professor said girls are better at languages."
+]
+
+for n in test_notes:
+    result = rewrite_note(n)
+    print("📝", n)
+    print("✨", result)
+    print("-"*60)
