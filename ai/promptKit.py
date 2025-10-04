@@ -221,3 +221,33 @@ for n in test_notes:
     print("📝", n)
     print("✨", result)
     print("-"*60)
+
+# ========== Demo helper functions  ==========
+
+def rewrite_note(text: str) -> str:
+    """
+    Rewrites a classroom note to be simpler and bias-free.
+    (This is a placeholder; replace with your real model call later.)
+    """
+    rules = [
+        ("foreign students", "international students"),
+        ("poor English", "English in progress"),
+        ("girls are better at", "students are often encouraged to develop strength in"),
+        ("hard", "challenging"),
+        ("too fast", "a bit fast"),
+    ]
+    out = text
+    for a, b in rules:
+        out = out.replace(a, b)
+    if out == text:
+        out = "This note has been rewritten in clear and inclusive English, removing biased wording."
+    return out
+
+
+def run_demo(text: str):
+    """Quick demo for Jupyter notebook display."""
+    original = text.strip()
+    rewritten = rewrite_note(original)
+    print("📝 Original:", original)
+    print("✨ Rewritten:", rewritten)
+    return {"original": original, "rewritten": rewritten}
