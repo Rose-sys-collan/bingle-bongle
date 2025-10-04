@@ -251,3 +251,112 @@ def run_demo(text: str):
     print("📝 Original:", original)
     print("✨ Rewritten:", rewritten)
     return {"original": original, "rewritten": rewritten}
+
+
+# ==== EchoClass: Model-backed rewrite (Gemini) ====
+import os, re
+from typing import Optional
+
+# 读 .env（若不存在也不会报错）
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
+
+# 尝试导入 Gemini SDK
+_GENAI_OK = True
+try:
+    import google.generativeai as genai
+except Exception:
+    _GENAI_OK = False
+
+# ---- Prompt 模板（可改写）----
+PROMPT_NOTE_REWRITE = """
+You are EchoClass, an unbiased classroom assistant that rewrites notes for ESL students.
+
+Rewrite the note below into clear, concise, and inclusive English:
+- Preserve academic meaning and intent; do not invent facts.
+- Avoid stereotypes or evaluative wording (e.g., “foreign”, “poor English”).
+- Prefer short sentences and common words.
+- If the note contains multiple items, keep a simple numbered list.
+- Output only the rewritten text, with no preface or explanations.
+
+Note:
+{note}
+"""
+
+# ---- 规则版后备（无 Key/超限时不崩）----
+def _rule_based_fallback(text: str) -> str:
+    s = (text or "").strip()
+    repl = [
+        (r"\bforeign students\b", "international students"),
+        (r"\bstudents with (strong|thick) accents\b", "students who speak with diverse accents"),
+        (r"\bpoor English\b", "English in progress"),
+        (r"\bbad English\b", "English in progress"),
+        (r"\btoo fast\b", "a bit fast"),
+        (r"\bhard words\b", "complex words"),
+        (r"\bstruggle to present\b", "may face challenges presenting"),
+    ]
+    for a, b in repl:
+        s = re.sub(a, b, s, flags=re.IGNORECASE)
+    if re.search(r"\baccents\b", s, re.I) and re.search(r"\bpresent", s, re.I):
+        if not re.search(r"can .*present .*effectively", s, re.I):
+            s = s.rstrip(".") + ", and with inclusive feedback and practice, they can present effectively."
+    s = re.sub(r"\s+", " ", s).strip()
+    return s or "This note has been rewritten in clear and inclusive English."
+
+# ---- 核心：调用模型的改写函数 ----
+def rewrite_note(
+    text: str,
+    template: Optional[str] = None,
+    use_model: bool = True,
+    model_name: Optional[str] = None,
+    temperature: Optional[float] = None,
+) -> str:
+    """Rewrite note with Gemini (fallback to rule-based when unavailable)."""
+    note = (text or "").strip()
+    if not note:
+        return ""
+
+    # 默认从环境变量读取模型与温度
+    model_name = model_name or os.getenv("ECHOCLASS_MODEL", "gemini-1.5-flash")
+    try:
+        temperature = float(temperature if temperature is not None else os.getenv("ECHOCLASS_TEMPERATURE", "0.4"))
+    except Exception:
+        temperature = 0.4
+
+    # 如果没要求用模型，或者 SDK/Key 不可用 → 直接走后备
+    api_key = os.getenv("GEMINI_API_KEY", "").strip()
+    if (not use_model) or (not _GENAI_OK) or (not api_key):
+        return _rule_based_fallback(note)
+
+    # 配置并调用
+    try:
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel(model_name)
+        prompt = (template or PROMPT_NOTE_REWRITE).format(note=note)
+        resp = model.generate_content(
+            prompt,
+            generation_config={
+                "temperature": temperature,
+                "top_p": 0.95,
+                "top_k": 40,
+            },
+        )
+        out = getattr(resp, "text", "") or ""
+        out = re.sub(r"\s+", " ", out).strip()
+        # 有些模型会加解释性前缀，这里保险剥离一下
+        out = re.sub(r"^(Rewrite[d]?|Rewriting|Here is|Here’s|Output)\s*[:\-–]\s*", "", out, flags=re.I)
+        return out or _rule_based_fallback(note)
+    except Exception:
+        # 任何网络/配额/安全阻断问题 → 回退规则版，不让体验中断
+        return _rule_based_fallback(note)
+
+# ---- Demo：Notebook/CLI 直接用 ----
+def run_demo(text: str, use_model: bool = True):
+    original = (text or "").strip()
+    rewritten = rewrite_note(original, use_model=use_model)
+    print("📝 Original:", original)
+    print("✨ Rewritten:", rewritten)
+    return {"original": original, "rewritten": rewritten}
