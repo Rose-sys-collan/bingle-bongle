@@ -45,7 +45,7 @@ def analyze_mistakes(note_text: str):
 
 
 # ---------- Feature ②: Translate + Plain English ----------
-import json as _json  # 防止上面没有导入json时出错；若已有import json也没关系
+import json as _json
 
 TRANSLATE_SCHEMA = {
   "type": "object",
@@ -108,7 +108,7 @@ def translate_with_explain(text: str, target_lang: str):
     return json.loads(resp.text)
 
 # ---------- Feature ④: Make study cards (Anki/Quizlet) ----------
-import json as _json  # 若上面已 import json 也不会冲突
+import json as _json
 
 CARDS_SCHEMA = {
   "type": "object",
@@ -152,7 +152,7 @@ def to_anki_tsv(cards_json: dict) -> str:
     )
 
 # ---------- Feature ③: Convert handwritten math to LaTeX ----------
-import json as _json  # 若上面已 import json 也无冲突
+import json as _json
 
 LATEX_SCHEMA = {
   "type": "object",
@@ -189,7 +189,7 @@ def image_to_latex(math_text: str):
 
 
 # ========== Demo helper functions (EchoClass) ==========
-# ---- 核心：调用模型的改写函数（支持 use_model 参数）----
+
 import os, re
 
 def _rule_fallback(text: str) -> str:
@@ -210,7 +210,7 @@ def _rule_fallback(text: str) -> str:
             s = s.rstrip(".") + ", and with inclusive feedback and practice, they can present effectively."
     return re.sub(r"\s+", " ", s).strip() or "This note has been rewritten in clear and inclusive English."
 
-# 如果你上面已经 import 过 google.generativeai as genai，就不用再 import；否则解除注释
+
 # import google.generativeai as genai
 
 PROMPT_NOTE_REWRITE = """
@@ -241,11 +241,11 @@ def rewrite_note(
     if not use_model:
         return _rule_fallback(note)
 
-    # 读取环境变量中的模型名（若未传入）
+    
     model_name = model_name or os.getenv("ECHOCLASS_MODEL", "gemini-1.5-flash")
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
 
-    # 如果没 key 或 SDK 不可用，就退回规则版
+    
     try:
         import google.generativeai as genai
     except Exception:
@@ -262,7 +262,7 @@ def rewrite_note(
             generation_config={"temperature": float(temperature), "top_p": 0.95, "top_k": 40},
         )
         out = (getattr(resp, "text", "") or "").strip()
-        # 清理可能的说明性前缀
+        
         out = re.sub(r"^(Rewrite[d]?|Rewriting|Here\s+is|Output)\s*[:\-–]\s*", "", out, flags=re.I)
         out = re.sub(r"\s+", " ", out).strip()
         return out or _rule_fallback(note)
@@ -286,7 +286,7 @@ def run_demo(text: str, use_model: bool = True):
 import re, os
 from typing import List, Dict, Optional
 
-# 轻量、可扩展的内置词表（fallback 用；可改成 docs/glossary.json）
+
 _FALLBACK_GLOSSARY = {
     "GPA": "Grade Point Average, your overall score in school on a numeric scale.",
     "TA": "Teaching Assistant, a student who helps the professor with teaching and grading.",
@@ -298,17 +298,17 @@ _FALLBACK_GLOSSARY = {
     "rubric": "A scoring guide that shows how your work will be graded.",
 }
 
-# 抓术语/缩略词/专有名词（简单启发式）
+
 def extract_terms(text: str, max_terms: int = 8) -> List[str]:
     s = text or ""
-    # 1) 缩略词：2~6 个大写字母
+
     acronyms = re.findall(r"\b[A-Z]{2,6}\b", s)
-    # 2) 驼峰/首字母大写短语（最多 3 词）
+
     caps_phrases = re.findall(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b", s)
-    # 3) 关键术语（含连字符/后缀）
+
     hyphen_terms = re.findall(r"\b[a-zA-Z]+(?:-[a-zA-Z]+)+\b", s)
 
-    # 合并去重，过滤常见词
+
     raw = acronyms + caps_phrases + hyphen_terms
     seen, out = set(), []
     stop = {"The","This","That","And","Or","But","We","You","They","He","She","It","A","An","In","On","At","For","Of","To","From","By"}
@@ -322,7 +322,7 @@ def extract_terms(text: str, max_terms: int = 8) -> List[str]:
             out.append(tok)
     return out[:max_terms]
 
-# Prompt（要求 CEFR A2-B1，禁术语化）
+
 PROMPT_EXPLAIN_TERMS = """
 You are EchoClass. Explain academic terms in plain English for ESL students (CEFR A2–B1).
 Rules:
@@ -339,12 +339,12 @@ Context:
 """.strip()
 
 def _simple_explain(term: str) -> str:
-    # 先查内置词表，再给通用解释
+    
     if term.upper() in _FALLBACK_GLOSSARY:
         return _FALLBACK_GLOSSARY[term.upper()]
     if term.lower() in _FALLBACK_GLOSSARY:
         return _FALLBACK_GLOSSARY[term.lower()]
-    # 通用模板（避免完全空）
+
     return f"{term} means something used in this class. In simple words, it helps you study or understand the topic."
 
 def explain_terms(
@@ -366,7 +366,7 @@ def explain_terms(
     if not use_model:
         return [{"term": t, "explanation": _simple_explain(t)} for t in terms]
 
-    # 读取环境与依赖
+
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     model_name = model_name or os.getenv("ECHOCLASS_MODEL", "gemini-1.5-flash")
     try:
@@ -376,19 +376,19 @@ def explain_terms(
         genai.configure(api_key=api_key)
         prompt = PROMPT_EXPLAIN_TERMS.format(
             terms=", ".join(terms),
-            context=ctx[:1200]  # 防止超长
+            context=ctx[:1200]  
         )
         resp = genai.GenerativeModel(model_name).generate_content(
             prompt,
             generation_config={"temperature": float(temperature), "top_p": 0.9, "top_k": 40},
         )
         raw = (getattr(resp, "text", "") or "").strip()
-        # 安全解析 JSON
+
         import json
-        # 简单清洗：去掉模型可能加的前后文
+
         raw = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
         data = json.loads(raw)
-        # 兜底：结构不齐时修补
+
         out = []
         for t in terms:
             hit = next((d for d in data if isinstance(d, dict) and d.get("term", "").strip().lower()==t.strip().lower()), None)
@@ -396,14 +396,14 @@ def explain_terms(
             out.append({"term": t, "explanation": exp or _simple_explain(t)})
         return out
     except Exception:
-        # 任意异常：完全回退
+
         return [{"term": t, "explanation": _simple_explain(t)} for t in terms]
 # ========== Explain Terms in Plain English ==========
 
 import re, os
 from typing import List, Dict, Optional
 
-# 轻量、可扩展的内置词表（fallback 用；可改成 docs/glossary.json）
+
 _FALLBACK_GLOSSARY = {
     "GPA": "Grade Point Average, your overall score in school on a numeric scale.",
     "TA": "Teaching Assistant, a student who helps the professor with teaching and grading.",
@@ -415,17 +415,17 @@ _FALLBACK_GLOSSARY = {
     "rubric": "A scoring guide that shows how your work will be graded.",
 }
 
-# 抓术语/缩略词/专有名词（简单启发式）
+
 def extract_terms(text: str, max_terms: int = 8) -> List[str]:
     s = text or ""
-    # 1) 缩略词：2~6 个大写字母
+
     acronyms = re.findall(r"\b[A-Z]{2,6}\b", s)
-    # 2) 驼峰/首字母大写短语（最多 3 词）
+
     caps_phrases = re.findall(r"\b([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})\b", s)
-    # 3) 关键术语（含连字符/后缀）
+
     hyphen_terms = re.findall(r"\b[a-zA-Z]+(?:-[a-zA-Z]+)+\b", s)
 
-    # 合并去重，过滤常见词
+
     raw = acronyms + caps_phrases + hyphen_terms
     seen, out = set(), []
     stop = {"The","This","That","And","Or","But","We","You","They","He","She","It","A","An","In","On","At","For","Of","To","From","By"}
@@ -439,7 +439,7 @@ def extract_terms(text: str, max_terms: int = 8) -> List[str]:
             out.append(tok)
     return out[:max_terms]
 
-# Prompt（要求 CEFR A2-B1，禁术语化）
+
 PROMPT_EXPLAIN_TERMS = """
 You are EchoClass. Explain academic terms in plain English for ESL students (CEFR A2–B1).
 Rules:
@@ -456,12 +456,12 @@ Context:
 """.strip()
 
 def _simple_explain(term: str) -> str:
-    # 先查内置词表，再给通用解释
+
     if term.upper() in _FALLBACK_GLOSSARY:
         return _FALLBACK_GLOSSARY[term.upper()]
     if term.lower() in _FALLBACK_GLOSSARY:
         return _FALLBACK_GLOSSARY[term.lower()]
-    # 通用模板（避免完全空）
+
     return f"{term} means something used in this class. In simple words, it helps you study or understand the topic."
 
 def explain_terms(
@@ -483,7 +483,7 @@ def explain_terms(
     if not use_model:
         return [{"term": t, "explanation": _simple_explain(t)} for t in terms]
 
-    # 读取环境与依赖
+
     api_key = os.getenv("GEMINI_API_KEY", "").strip()
     model_name = model_name or os.getenv("ECHOCLASS_MODEL", "gemini-1.5-flash")
     try:
@@ -493,28 +493,28 @@ def explain_terms(
         genai.configure(api_key=api_key)
         prompt = PROMPT_EXPLAIN_TERMS.format(
             terms=", ".join(terms),
-            context=ctx[:1200]  # 防止超长
+            context=ctx[:1200] 
         )
         resp = genai.GenerativeModel(model_name).generate_content(
             prompt,
             generation_config={"temperature": float(temperature), "top_p": 0.9, "top_k": 40},
         )
         raw = (getattr(resp, "text", "") or "").strip()
-        # 安全解析 JSON
+
         import json
-        # 简单清洗：去掉模型可能加的前后文
+
         raw = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
         data = json.loads(raw)
-        # 兜底：结构不齐时修补
+
         out = []
         for t in terms:
-            # 找到对应项
+
             hit = next((d for d in data if isinstance(d, dict) and d.get("term", "").strip().lower()==t.strip().lower()), None)
             exp = hit.get("explanation") if hit else None
             out.append({"term": t, "explanation": exp or _simple_explain(t)})
         return out
     except Exception:
-        # 任意异常：完全回退
+
         return [{"term": t, "explanation": _simple_explain(t)} for t in terms]
 
 
